@@ -1,0 +1,215 @@
+-- скрипты создания таблиц
+
+CREATE TABLE Classes (
+    class VARCHAR(100) NOT NULL,
+    type ENUM('Racing', 'Street') NOT NULL,
+    country VARCHAR(100) NOT NULL,
+    numDoors INT NOT NULL,
+    engineSize DECIMAL(3, 1) NOT NULL, -- размер двигателя в литрах
+    weight INT NOT NULL,                -- вес автомобиля в килограммах
+    PRIMARY KEY (class)
+);
+
+CREATE TABLE Cars (
+    name VARCHAR(100) NOT NULL,
+    class VARCHAR(100) NOT NULL,
+    year INT NOT NULL,
+    PRIMARY KEY (name),
+    FOREIGN KEY (class) REFERENCES Classes(class)
+);
+
+CREATE TABLE Races (
+    name VARCHAR(100) NOT NULL,
+    date DATE NOT NULL,
+    PRIMARY KEY (name)
+);
+
+CREATE TABLE Results (
+    car VARCHAR(100) NOT NULL,
+    race VARCHAR(100) NOT NULL,
+    position INT NOT NULL,
+    PRIMARY KEY (car, race),
+    FOREIGN KEY (car) REFERENCES Cars(name),
+    FOREIGN KEY (race) REFERENCES Races(name)
+);
+
+
+-- наполнение таблиц
+
+INSERT INTO Classes (class, type, country, numDoors, engineSize, weight) VALUES
+('SportsCar', 'Racing', 'USA', 2, 3.5, 1500),
+('Sedan', 'Street', 'Germany', 4, 2.0, 1200),
+('SUV', 'Street', 'Japan', 4, 2.5, 1800),
+('Hatchback', 'Street', 'France', 5, 1.6, 1100),
+('Convertible', 'Racing', 'Italy', 2, 3.0, 1300),
+('Coupe', 'Street', 'USA', 2, 2.5, 1400),
+('Luxury Sedan', 'Street', 'Germany', 4, 3.0, 1600),
+('Pickup', 'Street', 'USA', 2, 2.8, 2000);
+
+INSERT INTO Cars (name, class, year) VALUES
+('Ford Mustang', 'SportsCar', 2020),
+('BMW 3 Series', 'Sedan', 2019),
+('Toyota RAV4', 'SUV', 2021),
+('Renault Clio', 'Hatchback', 2020),
+('Ferrari 488', 'Convertible', 2019),
+('Chevrolet Camaro', 'Coupe', 2021),
+('Mercedes-Benz S-Class', 'Luxury Sedan', 2022),
+('Ford F-150', 'Pickup', 2021),
+('Audi A4', 'Sedan', 2018),
+('Nissan Rogue', 'SUV', 2020);
+
+INSERT INTO Races (name, date) VALUES
+('Indy 500', '2023-05-28'),
+('Le Mans', '2023-06-10'),
+('Monaco Grand Prix', '2023-05-28'),
+('Daytona 500', '2023-02-19'),
+('Spa 24 Hours', '2023-07-29'),
+('Bathurst 1000', '2023-10-08'),
+('Nürburgring 24 Hours', '2023-06-17'),
+('Pikes Peak International Hill Climb', '2023-06-25');
+
+NSERT INTO Results (car, race, position) VALUES
+('Ford Mustang', 'Indy 500', 1),
+('BMW 3 Series', 'Le Mans', 3),
+('Toyota RAV4', 'Monaco Grand Prix', 2),
+('Renault Clio', 'Daytona 500', 5),
+('Ferrari 488', 'Le Mans', 1),
+('Chevrolet Camaro', 'Monaco Grand Prix', 4),
+('Mercedes-Benz S-Class', 'Spa 24 Hours', 2),
+('Ford F-150', 'Bathurst 1000', 6),
+('Audi A4', 'Nürburgring 24 Hours', 8),
+('Nissan Rogue', 'Pikes Peak International Hill Climb', 3);
+
+-- ЗАДАНИЕ 1
+/*
+Определить, какие автомобили из каждого класса имеют наименьшую среднюю позицию в гонках, 
+и вывести информацию о каждом таком автомобиле для данного класса, включая его класс, 
+среднюю позицию и количество гонок, в которых он участвовал. 
+Также отсортировать результаты по средней позиции.
+*/
+
+WITH RankedCars AS (
+    SELECT c.class, 
+    c.name, 
+    AVG(r.position) AS avg_position, 
+    COUNT(r.race) AS race_count, 
+    RANK() OVER (PARTITION BY c.class ORDER BY AVG(r.position)) AS rank
+    FROM  Cars c
+    JOIN Results r ON c.name = r.car
+    GROUP BY c.class, c.name
+)
+SELECT rc.class, rc.name, rc.avg_position,rc.race_count
+FROM RankedCars rc
+WHERE c.rank = 1
+ORDER BY rc.avg_position;
+
+--ЗАДАНИЕ 2
+/*
+Определить автомобиль, который имеет наименьшую среднюю позицию в гонках среди всех автомобилей, 
+и вывести информацию об этом автомобиле, включая его класс, среднюю позицию, количество гонок, 
+в которых он участвовал, и страну производства класса автомобиля. Если несколько автомобилей имеют одинаковую 
+наименьшую среднюю позицию, выбрать один из них по алфавиту (по имени автомобиля).
+*/
+SELECT c.name, c.class, AVG(r.position) as average_position, COUNT(r.race) as race_count, cl.country
+FROM cars c 
+INNER JOIN results r ON c.name = r.car
+INNER JOIN classes cl ON cl.class = c.class
+GROUP BY c.name
+ORDER BY average_position, c.name
+LIMIT 1
+
+-- ЗАДАНИЕ 3
+/*
+Определить классы автомобилей, которые имеют наименьшую среднюю позицию в гонках, 
+и вывести информацию о каждом автомобиле из этих классов, 
+включая его имя, среднюю позицию, количество гонок, в которых он участвовал, 
+страну производства класса автомобиля, а также общее количество гонок, в которых участвовали автомобили этих классов.
+Если несколько классов имеют одинаковую среднюю позицию, выбрать все из них.
+*/
+WITH MinAvgPositionClasses AS (
+SELECT c.class, count(r.race) AS races_count
+FROM results r
+JOIN cars c ON r.car = c.name
+JOIN classes cl ON cl.class = c.class
+GROUP BY c.class
+HAVING AVG(r.position) = (
+    SELECT MIN(avg_position)
+    FROM (
+        SELECT AVG(r.position) AS avg_position
+        FROM results r
+        JOIN cars c ON r.car = c.name
+        GROUP BY c.class
+    ) AS subquery
+))
+
+SELECT c.name, c.class, AVG(r.position) as average_position, COUNT(r.race) as races_count, cl.country, mincl.races_count
+FROM cars c
+INNER JOIN MinAvgPositionClasses mincl ON mincl.class = c.class
+INNER JOIN classes cl ON cl.class = c.class
+INNER JOIN results r ON r.car = c.name
+GROUP BY c.name
+
+-- ЗАДАНИЕ 4
+/*
+Определить, какие автомобили имеют среднюю позицию лучше (меньше) средней позиции всех автомобилей 
+в своем классе (то есть автомобилей в классе должно быть минимум два, чтобы выбрать один из них). 
+Вывести информацию об этих автомобилях, включая их имя, класс, среднюю позицию, количество гонок, 
+в которых они участвовали, и страну производства класса автомобиля. 
+Также отсортировать результаты по классу и затем по средней позиции в порядке возрастания.
+*/
+WITH ClassAvgPositions AS (
+    SELECT cl.class, AVG(r.position) AS avg_position
+    FROM results r
+    JOIN cars c ON c.name = r.car
+    JOIN classes cl ON cl.class = c.class
+    GROUP BY cl.class
+    HAVING COUNT(c.name) >= 2
+),
+CarAvgPositions AS (
+    SELECT c.name, c.class, AVG(r.position) AS average_position, COUNT(r.car) AS races_count
+    FROM cars c
+    JOIN results r ON r.car = c.name
+    GROUP BY c.name, c.class
+)
+
+SELECT cap.name, cap.class, cap.average_position, cap.races_count, cl.country
+FROM carAvgPositions cap
+JOIN classes cl ON cap.class = cl.class
+JOIN ClassAvgPositions cap_pos ON cap.class = cap_pos.class
+WHERE cap.average_position < cap_pos.avg_position
+ORDER BY cap.class, cap.average_position ASC;
+
+-- ЗАДАНИЕ 5
+/*
+Определить, какие классы автомобилей имеют наибольшее количество автомобилей с низкой средней позицией 
+(больше 3.0) и вывести информацию о каждом автомобиле из этих классов, включая его имя, класс, 
+среднюю позицию, количество гонок, в которых он участвовал, страну производства класса автомобиля, 
+а также общее количество гонок для каждого класса.
+Отсортировать результаты по количеству автомобилей с низкой средней позицией.
+*/
+WITH CarAvgPositions AS (
+    SELECT c.name, c.class, AVG(r.position) AS average_position, COUNT(r.car) AS races_count
+    FROM cars c
+    JOIN results r ON r.car = c.name
+    GROUP BY c.name, c.class
+),
+LowAvgCars AS (
+    SELECT cap.class, COUNT(*) AS low_avg_count
+    FROM CarAvgPositions cap
+    WHERE cap.average_position > 3.0
+    GROUP BY cap.class
+),
+ClassRacesCount AS (
+    SELECT c.class, COUNT(r.car) AS total_races
+    FROM cars c
+    JOIN results r ON r.car = c.name
+    GROUP BY c.class
+)
+
+SELECT cap.name, cap.class, cap.average_position, cap.races_count, cl.country, crc.total_races
+FROM CarAvgPositions cap
+JOIN classes cl ON cap.class = cl.class
+JOIN LowAvgCars lac ON cap.class = lac.class
+JOIN ClassRacesCount crc ON cap.class = crc.class
+WHERE cap.average_position > 3.0
+ORDER BY lac.low_avg_count DESC;
